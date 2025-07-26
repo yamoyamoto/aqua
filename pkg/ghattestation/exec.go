@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -116,7 +117,24 @@ func (e *ExecutorImpl) Verify(ctx context.Context, logE *logrus.Entry, param *Pa
 }
 
 func (e *ExecutorImpl) exec(ctx context.Context, args []string) error {
-	out, _, err := e.executor.ExecStderrAndGetCombinedOutput(osexec.Command(ctx, e.exePath, args...))
+	cmd := osexec.Command(ctx, e.exePath, args...)
+
+	// GitHub Artifact Attestations verification should always use github.com
+	// regardless of GH_HOST environment variable settings
+	// Create a copy of the environment variables to avoid modifying the original
+	env := os.Environ()
+	cmd.Env = make([]string, 0, len(env))
+
+	// Set GH_HOST to github.com for attestation verification
+	for _, envVar := range env {
+		if strings.HasPrefix(envVar, "GH_HOST=") {
+			cmd.Env = append(cmd.Env, "GH_HOST=github.com")
+		} else {
+			cmd.Env = append(cmd.Env, envVar)
+		}
+	}
+
+	out, _, err := e.executor.ExecStderrAndGetCombinedOutput(cmd)
 	if err == nil {
 		return nil
 	}
